@@ -116,9 +116,9 @@ Always be chill, supportive, and a bit sarcastic. Keep it real."""
                 json_str = message[start:end].strip()
                 try:
                     return json.loads(json_str)
-                except:
+                except json.JSONDecodeError:
                     pass
-        except:
+        except (json.JSONDecodeError, ValueError, IndexError):
             pass
         return None
     

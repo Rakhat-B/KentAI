@@ -1,0 +1,6 @@
+ollama
+pynput
+pyautogui
+psutil
+python-dotenv
+colorama

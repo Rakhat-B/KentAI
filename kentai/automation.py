@@ -7,6 +7,7 @@ import os
 import webbrowser
 from typing import List, Optional
 from pathlib import Path
+import winreg
 
 
 class AutomationEngine:
@@ -17,15 +18,70 @@ class AutomationEngine:
         self.app_paths = self._load_app_paths()
         
     def _load_app_paths(self) -> dict:
-        """Load application paths from environment or use defaults"""
+        """Load application paths from environment or auto-detect them"""
         from dotenv import load_dotenv
         load_dotenv()
         
-        return {
+        paths = {
             "vscode": os.getenv("VSCODE_PATH", "code"),
-            "steam": os.getenv("STEAM_PATH", "steam"),
-            "discord": os.getenv("DISCORD_PATH", "discord"),
+            "steam": os.getenv("STEAM_PATH", None),
+            "discord": os.getenv("DISCORD_PATH", None),
         }
+        
+        # Auto-detect on Windows if not in .env
+        if self.system == "Windows":
+            if not paths["discord"]:
+                paths["discord"] = self._find_discord_windows()
+            if not paths["steam"]:
+                paths["steam"] = self._find_steam_windows()
+        
+        return paths
+    
+    def _find_discord_windows(self) -> Optional[str]:
+        """Auto-detect Discord installation on Windows"""
+        try:
+            # Check AppData\Local\Discord
+            discord_dir = Path(os.path.expandvars(r"%APPDATA%\..\Local\Discord"))
+            if discord_dir.exists():
+                # Find the latest version folder
+                app_folders = sorted([f for f in discord_dir.iterdir() if f.is_dir() and f.name.startswith("app-")], 
+                                   key=lambda x: x.name, reverse=True)
+                if app_folders:
+                    exe_path = app_folders[0] / "Discord.exe"
+                    if exe_path.exists():
+                        return str(exe_path)
+        except:
+            pass
+        
+        # Fallback to just "discord" command
+        return "discord"
+    
+    def _find_steam_windows(self) -> Optional[str]:
+        """Auto-detect Steam installation on Windows"""
+        try:
+            # Check common Steam install locations
+            common_paths = [
+                r"C:\Program Files (x86)\Steam\steam.exe",
+                r"C:\Program Files\Steam\steam.exe",
+            ]
+            for path in common_paths:
+                if Path(path).exists():
+                    return path
+            
+            # Try registry lookup
+            try:
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam")
+                install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                steam_exe = Path(install_path) / "steam.exe"
+                if steam_exe.exists():
+                    return str(steam_exe)
+            except:
+                pass
+        except:
+            pass
+        
+        # Fallback to just "steam" command
+        return "steam"
     
     def open_app(self, app_name: str) -> bool:
         """
@@ -67,7 +123,14 @@ class AutomationEngine:
         """Launch a command based on the OS"""
         try:
             if self.system == "Windows":
-                subprocess.Popen(cmd, shell=True)
+                # Launch without showing console window and suppress output
+                subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=0x08000000  # CREATE_NO_WINDOW flag for Windows
+                )
             elif self.system == "Darwin":  # macOS
                 subprocess.Popen(["open", "-a", cmd])
             else:  # Linux
@@ -160,7 +223,10 @@ class AutomationEngine:
         action = action_data.get("action")
         value = action_data.get("value")
         
-        if action == "lazy_mode" and value:
+        if action == "open_app" and value:
+            success = self.open_app(value)
+            return {"status": "success" if success else "failed", "results": {"app": value, "opened": success}}
+        elif action == "lazy_mode" and value:
             return {"status": "success", "results": self.lazy_mode()}
         elif action == "work_mode" and value:
             return {"status": "success", "results": self.work_mode()}

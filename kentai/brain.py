@@ -16,14 +16,23 @@ You help with computer automation tasks - opening apps, managing workflows, etc.
 When a user asks you to do something, respond in a conversational way AND include a JSON action block.
 
 Available commands:
-- open_apps: ["app1", "app2"] - Opens applications
+- open_app: "app_name" - Opens a single application (discord, steam, vscode, chrome, etc)
+- open_apps: ["app1", "app2"] - Opens multiple applications
 - lazy_mode: true - Activates lazy day mode (Steam, Discord, YouTube, disable alarms)
 - work_mode: true - Activates work mode (VS Code, Notion, Gmail)
 - disable_alarms: true - Disables system alarms
 - enable_alarms: true - Enables system alarms
 
-Example response:
-"Yo dude, let's get that lazy day started! 🎮"
+IMPORTANT: Always respond with BOTH conversational text AND a JSON action block in ```json``` markers.
+
+Example response for "open discord":
+Yo dude, opening Discord for ya! 🎮
+```json
+{"action": "open_app", "value": "discord"}
+```
+
+Example response for "lazy day":
+Alright bro, let's chill! 😎
 ```json
 {"action": "lazy_mode", "value": true}
 ```
@@ -104,20 +113,23 @@ Always be chill, supportive, and a bit sarcastic. Keep it real."""
     def _extract_action(self, message: str) -> Optional[Dict[str, Any]]:
         """Extract JSON action from message"""
         try:
-            # Look for JSON code block
+            # Look for JSON code block with ```json markers
             if "```json" in message:
                 start = message.find("```json") + 7
                 end = message.find("```", start)
-                json_str = message[start:end].strip()
-                return json.loads(json_str)
-            elif "```" in message:
-                start = message.find("```") + 3
-                end = message.find("```", start)
-                json_str = message[start:end].strip()
-                try:
+                if end > start:
+                    json_str = message[start:end].strip()
                     return json.loads(json_str)
-                except json.JSONDecodeError:
-                    pass
+            # Look for JSON code block with ``` markers
+            elif "```" in message:
+                parts = message.split("```")
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:  # Code blocks are at odd indices
+                        try:
+                            # Try to parse as JSON
+                            return json.loads(part.strip())
+                        except json.JSONDecodeError:
+                            continue
         except (json.JSONDecodeError, ValueError, IndexError):
             pass
         return None
